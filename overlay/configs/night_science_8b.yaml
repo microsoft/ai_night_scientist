@@ -1,0 +1,136 @@
+# Night Science -- GRPO on Qwen3-8B-Base, 4 nodes x 8 GPUs.
+#
+# The full training recipe. It holds no credentials and no deployment-specific
+# hosts: everything environment-specific is read from env vars documented in
+# .env.example.
+#
+# Inherit verl defaults, then override with values below
+defaults:
+  - ppo_trainer
+  - _self_
+
+algorithm:
+  adv_estimator: grpo
+  use_kl_in_reward: False
+
+data:
+  train_files: data/day_night/proposal_gen/train.parquet
+  val_files: data/day_night/proposal_gen/test.parquet
+  train_batch_size: 32 # number of prompts sampled per training iteration
+  max_prompt_length: 16384
+  max_response_length: 25000
+  return_raw_chat: True
+  use_remove_padding: True
+  use_dynamic_bsz: True # Optimization: handles variable response lengths
+  apply_chat_template_kwargs: {enable_thinking:false}
+
+actor_rollout_ref:
+  model:
+    path: Qwen/Qwen3-8B-Base
+    override_config:
+      attn_implementation: flash_attention_2
+    # lora_rank: 8        # Must match SFT adapter config (see configs/lora.yaml)
+    # lora_alpha: 16       # Must match SFT adapter config (see configs/lora.yaml)
+    # lora_adapter_path: null  # Set to SFT checkpoint to warm-start from SFT
+    use_liger: True
+    enable_gradient_checkpointing: True
+  actor: # huggingface model with autograd used for forward/backward passes
+    strategy: fsdp2
+    use_dynamic_bsz: True           # Enabled for training updates
+    # Recommendation: 3x (max_prompt + max_response)
+    ppo_max_token_len_per_gpu: 32000
+    fsdp_config:
+      param_offload: False         # Disable offload on H100s for speed unless OOM occurs
+      optimizer_offload: True     # Keeping on-device is faster for 8B models on H100
+      use_torch_compile: True      # Optimization: significant speedup for actor backward
+      forward_prefetch: True       # Optimization: overlaps communication/computation
+    ppo_mini_batch_size: 32 # number of prompts; multiplied by number of rollouts to get total mini_batch_size
+    ulysses_sequence_parallel_size: 8 # Optimization: Splits 25k context across GPUs in a node
+    use_kl_loss: true
+    kl_loss_coef: 0.001
+  ref: # Reference model for kl-div term
+    strategy: fsdp2
+    use_dynamic_bsz: True           # Enabled for reference log prob
+    log_prob_max_token_len_per_gpu: 40000
+    fsdp_config:
+      param_offload: True
+  rollout: # vLLM model used for generating rollouts and rewards
+    name: sglang
+    task: proposal_gen
+    engine_kwargs:
+      sglang:
+        grammar_backend: xgrammar
+        reasoning_parser: qwen3-thinking
+    log_prob_max_token_len_per_gpu: 40000
+    calculate_log_probs: True
+    skip_tokenizer_init: False
+    gpu_memory_utilization: 0.75
+    max_model_len: 32768 # max_prompt_length + max_response_length + buffer
+    tensor_model_parallel_size: 2 # set >1 for model parallelism if model doesn't fit in one GPU
+    n: 8 # number of rollouts per prompt
+    temperature: 0.7
+    max_num_seqs: 16 
+    enforce_eager: False # Required for CUDA graph capture optimization
+    max_num_batched_tokens: 30000 
+    multi_turn:
+      enable: True
+      tool_config_path: "examples/sglang_multiturn/config/tool_config/arxiv_search_tool_config.yaml"
+      interaction_config_path: "examples/sglang_multiturn/config/interaction_config/proposal_gen_interaction_config.yaml"
+      max_user_turns: 11
+      max_assistant_turns: 11
+      swap_action: 0.5
+      swap_action_decay: 0.001
+      format: hermes
+      max_tool_response_length: 2048
+    agent:
+      default_agent_loop: creative_tool_agent
+
+trainer:
+  experiment_name: night_science_8b_action_process_outcome_${actor_rollout_ref.rollout.multi_turn.max_user_turns}_swap_${actor_rollout_ref.rollout.multi_turn.swap_action}_${actor_rollout_ref.rollout.multi_turn.swap_action_decay}_batch_size_${data.train_batch_size}
+  val_before_train: False
+  n_gpus_per_node: 8
+  nnodes: 4
+  total_epochs: 10
+  save_freq: 5 # where every iteration is train_batch_size
+  test_freq: -1
+  checkpoint:
+    save_contents: [model, optimizer, extra]
+  default_local_dir: ${oc.env:OUTPUTS}/checkpoints/${trainer.experiment_name}
+  logger:
+    - console
+    - wandb
+
+reward:
+  reward_manager:
+    source: register
+    name: creative
+  reward_kwargs:
+    # ---------------------------------------------------------------------
+    # LLM judge. Nothing secret lives in this file: endpoints and keys are
+    # read from the environment. Copy .env.example to .env and fill it in.
+    #
+    #   CREATIVE_AZURE_ENDPOINTS   comma-separated Azure OpenAI endpoints
+    #   CREATIVE_AZURE_MODELS      comma-separated deployment names
+    #   CREATIVE_AZURE_API_KEYS    comma-separated keys (omit to use
+    #                              managed identity / az login)
+    #
+    # `${oc.env:VAR}` with no default fails loudly at startup if VAR is unset,
+    # which is what we want: a missing judge should stop the run rather than
+    # surface later as a confusing network error.
+    # ---------------------------------------------------------------------
+    azure_endpoints: ${oc.env:CREATIVE_AZURE_ENDPOINTS}
+    azure_models: ${oc.env:CREATIVE_AZURE_MODELS,gpt-4.1}
+    # One weight per endpoint, same order. Omit for equal weighting.
+    # azure_endpoint_ratios: [1, 2, 1, 1]
+    azure_requests_per_minute: 5000
+    azure_api_version: ${oc.env:CREATIVE_AZURE_API_VERSION,2024-12-01-preview}
+    azure_temperature: 0.0
+    azure_top_p: 1.0
+
+custom_reward_function:
+  path: verl/utils/reward_score/proposal_gen_new_rewards.py
+  # compute_action_process_outcome_score  full reward (all three axes)
+  # compute_outcome_score                 outcome only
+  # compute_process_score                 process only
+  # compute_process_outcome_score         process + outcome, no action term
+  name: compute_action_process_outcome_score

@@ -1,0 +1,11 @@
+diff --git a/verl/experimental/reward_loop/reward_loop.py b/verl/experimental/reward_loop/reward_loop.py
+index 712cd9bd..469ce14d 100644
+--- a/verl/experimental/reward_loop/reward_loop.py
++++ b/verl/experimental/reward_loop/reward_loop.py
+@@ -344,4 +344,4 @@ class RewardLoopManager:
+         async def run_all():
+             return await asyncio.gather(*tasks)
+ 
+-        return asyncio.run(run_all())
++        return asyncio.run(run_all())
+\ No newline at end of file

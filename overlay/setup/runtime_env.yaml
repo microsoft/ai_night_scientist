@@ -1,0 +1,23 @@
+# Ray runtime environment for multi-node training.
+# $OUTPUTS and $PROPOSAL_GEN_RUN_TIMESTAMP are substituted by launch.sh.
+working_dir: ./
+excludes:
+  - "/.git/"
+  - ".env"
+  - "build"
+  - "output_dir/*.pt"
+  - "data/**/*.parquet"
+env_vars:
+  OUTPUTS: $OUTPUTS
+  PROPOSAL_GEN_RUN_TIMESTAMP: "$PROPOSAL_GEN_RUN_TIMESTAMP"
+
+  TORCH_NCCL_AVOID_RECORD_STREAMS: "1"
+  CUDA_DEVICE_MAX_CONNECTIONS: "1"
+
+  # Enable InfiniBand
+  NCCL_IB_DISABLE: "0"
+  NCCL_TIMEOUT: "1800"
+
+  # Stability for verl / vLLM
+  VLLM_USE_V1: "1"
+  PYTORCH_CUDA_ALLOC_CONF: "max_split_size_mb:128"

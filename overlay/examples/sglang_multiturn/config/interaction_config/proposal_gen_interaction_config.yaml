@@ -1,0 +1,4 @@
+interaction:
+  - name: "proposal_gen"
+    class_name: "verl.interactions.proposal_gen_interaction.ProposalGenInteraction"
+    config: {}

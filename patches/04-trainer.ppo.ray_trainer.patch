@@ -1,0 +1,285 @@
+diff --git a/verl/trainer/ppo/ray_trainer.py b/verl/trainer/ppo/ray_trainer.py
+index ae43d2ba..782e3f4a 100644
+--- a/verl/trainer/ppo/ray_trainer.py
++++ b/verl/trainer/ppo/ray_trainer.py
+@@ -286,6 +286,7 @@ class RayPPOTrainer:
+             project_name=self.config.trainer.project_name,
+             experiment_name=self.config.trainer.experiment_name,
+         )
++        self.reward_batch_log_path: Optional[str] = None
+ 
+         # if ref_in_actor is True, the reference policy will be actor without lora applied
+         lora_rank = config.actor_rollout_ref.model.get("lora", {}).get("rank", 0)
+@@ -447,6 +448,228 @@ class RayPPOTrainer:
+                 dump_path=rollout_data_dir,
+             )
+ 
++    @staticmethod
++    def _extract_reward_log_jsons(reward_extra_infos_dict: dict[str, Any]) -> list[str]:
++        reward_logs = reward_extra_infos_dict.get("reward_log_json")
++        if reward_logs is None:
++            return []
++
++        extracted_logs = []
++
++        def _collect_strings(value: Any) -> None:
++            if value is None:
++                return
++            if isinstance(value, np.ndarray):
++                _collect_strings(value.tolist())
++                return
++            if isinstance(value, (list, tuple)):
++                for item in value:
++                    _collect_strings(item)
++                return
++            if isinstance(value, str) and value:
++                extracted_logs.append(value)
++
++        _collect_strings(reward_logs)
++        return extracted_logs
++
++    def _get_reward_batch_log_dir(self) -> str:
++        base_output_dir = os.environ.get("OUTPUTS") or os.environ.get("OUTPUT_DIR")
++        if base_output_dir:
++            dir_path = os.path.join(base_output_dir, "proposal_gen", "logs")
++        else:
++            dir_path = "/mnt/my_output/proposal_gen/latest_results"
++        os.makedirs(dir_path, exist_ok=True)
++        return dir_path
++
++    def _resolve_reward_batch_log_path(self) -> str:
++        if self.reward_batch_log_path is not None:
++            return self.reward_batch_log_path
++
++        checkpoint_root = self.config.trainer.default_local_dir
++        if not os.path.isabs(checkpoint_root):
++            checkpoint_root = os.path.join(os.getcwd(), checkpoint_root)
++        os.makedirs(checkpoint_root, exist_ok=True)
++
++        metadata_path = os.path.join(checkpoint_root, "reward_batch_log_metadata.json")
++        log_path = None
++        if os.path.exists(metadata_path):
++            try:
++                with open(metadata_path, encoding="utf-8") as metadata_file:
++                    metadata = json.load(metadata_file)
++                if isinstance(metadata, dict):
++                    base_output_dir = os.environ.get("OUTPUTS") or os.environ.get("OUTPUT_DIR")
++                    metadata_log_path = metadata.get("log_path")
++                    if metadata_log_path:
++                        if os.path.isabs(metadata_log_path):
++                            log_path = metadata_log_path
++                        elif base_output_dir:
++                            log_path = os.path.join(base_output_dir, metadata_log_path)
++                        else:
++                            log_path = os.path.join("proposal_gen", "logs", os.path.basename(metadata_log_path))
++            except (json.JSONDecodeError, OSError):
++                log_path = None
++
++        if not log_path:
++            num_actions = self.config.actor_rollout_ref.rollout.multi_turn.max_user_turns
++            run_suffix = os.environ.get("PROPOSAL_GEN_RUN_TIMESTAMP", "manual")
++            short_run_suffix = run_suffix
++            if run_suffix != "manual":
++                date_part, separator, time_part = run_suffix.partition("_")
++                if separator and len(date_part) == 8 and date_part.isdigit() and len(time_part) >= 6:
++                    short_run_suffix = f"{date_part[4:]}_{time_part[:6]}"
++                elif len(run_suffix) > 11:
++                    short_run_suffix = run_suffix[-11:]
++
++            experiment_name = str(self.config.trainer.experiment_name or "proposal_gen")
++            experiment_name = experiment_name.replace(os.sep, "_").replace(" ", "_")
++            log_filename = f"{experiment_name}_{short_run_suffix}.jsonl"
++            log_path = os.path.join(self._get_reward_batch_log_dir(), log_filename)
++            base_output_dir = os.environ.get("OUTPUTS") or os.environ.get("OUTPUT_DIR")
++            metadata_log_path = os.path.relpath(log_path, base_output_dir) if base_output_dir else log_path
++            with open(metadata_path, "w", encoding="utf-8") as metadata_file:
++                json.dump(
++                    {
++                        "format": "proposal_gen_reward_rows_v1",
++                        "log_path": metadata_log_path,
++                        "num_actions": num_actions,
++                        "experiment_name": experiment_name,
++                        "run_suffix": short_run_suffix,
++                    },
++                    metadata_file,
++                    indent=2,
++                )
++                metadata_file.write("\n")
++
++        self.reward_batch_log_path = log_path
++        return log_path
++
++    def _build_reward_batch_log_rows(
++        self, batch: DataProto, reward_extra_infos_dict: dict[str, Any]
++    ) -> list[dict[str, Any]]:
++        reward_logs = self._extract_reward_log_jsons(reward_extra_infos_dict)
++        if not reward_logs:
++            return []
++
++        extra_infos = batch.non_tensor_batch.get("extra_info")
++        award_ids = []
++        if extra_infos is not None:
++            iterable_extra_infos = extra_infos.tolist() if isinstance(extra_infos, np.ndarray) else extra_infos
++            if not isinstance(iterable_extra_infos, (list, tuple)):
++                iterable_extra_infos = [iterable_extra_infos]
++            for extra_info in iterable_extra_infos:
++                if isinstance(extra_info, dict) and extra_info.get("award_id") is not None:
++                    award_ids.append(str(extra_info["award_id"]))
++                else:
++                    award_ids.append("")
++
++        if not award_ids or all(not award_id for award_id in award_ids):
++            uid_values = batch.non_tensor_batch.get("uid")
++            if uid_values is not None:
++                award_ids = uid_values.tolist() if isinstance(uid_values, np.ndarray) else list(uid_values)
++                award_ids = [str(uid_value) for uid_value in award_ids]
++
++        rollout_counts: dict[str, int] = defaultdict(int)
++        rows = []
++        for sample_idx, reward_log in enumerate(reward_logs):
++            try:
++                row = json.loads(reward_log)
++            except json.JSONDecodeError:
++                row = {"raw_reward_log_json": reward_log}
++
++            award_id = award_ids[sample_idx] if sample_idx < len(award_ids) and award_ids[sample_idx] else f"sample_{sample_idx}"
++            rollout_id = rollout_counts[award_id]
++            rollout_counts[award_id] += 1
++
++            row["step"] = self.global_steps
++            row["award_id"] = award_id
++            row["rollout_id"] = rollout_id
++            rows.append(row)
++
++        return rows
++
++    @staticmethod
++    def _flatten_reward_values(value: Any) -> list[float]:
++        if value is None:
++            return []
++        if isinstance(value, np.ndarray):
++            return RayPPOTrainer._flatten_reward_values(value.tolist())
++        if isinstance(value, (list, tuple)):
++            flattened = []
++            for item in value:
++                flattened.extend(RayPPOTrainer._flatten_reward_values(item))
++            return flattened
++        if isinstance(value, (int, float, np.integer, np.floating)) and not isinstance(value, bool):
++            return [float(value)]
++        return []
++
++    def _log_reward_components_to_wandb(self, logger, reward_extra_infos_dict: dict[str, Any]) -> None:
++        if "wandb" not in logger.logger:
++            return
++
++        reward_logs = self._extract_reward_log_jsons(reward_extra_infos_dict)
++        if not reward_logs:
++            return
++
++        parsed_logs = []
++        for reward_log in reward_logs:
++            try:
++                parsed_logs.append(json.loads(reward_log))
++            except json.JSONDecodeError:
++                continue
++
++        if not parsed_logs:
++            return
++
++        wandb = logger.logger["wandb"]
++        wandb_metrics = {}
++        scalar_fields = [
++            "action_level_entropy",
++            "action_level_similarity",
++            "action_level_score",
++            "process_level_num_intermediate",
++            "process_level_score",
++            "outcome_level_feasibility",
++            "outcome_level_score",
++            "final_score",
++        ]
++        list_fields = [
++            "action_level_raw_entropies",
++            "action_level_raw_similarities",
++            "process_level_novelty",
++            "process_level_relevance",
++        ]
++
++        for field in scalar_fields:
++            values = []
++            for entry in parsed_logs:
++                values.extend(self._flatten_reward_values(entry.get(field)))
++            if values:
++                wandb_metrics[f"reward_components/{field}"] = float(np.mean(values))
++
++        for field in list_fields:
++            values = []
++            for entry in parsed_logs:
++                values.extend(self._flatten_reward_values(entry.get(field)))
++            if values:
++                wandb_metrics[f"reward_components/{field}"] = float(np.mean(values))
++                wandb_metrics[f"reward_components/{field}_hist"] = wandb.Histogram(np.array(values, dtype=float))
++
++        if wandb_metrics:
++            logger.log(data=wandb_metrics, step=self.global_steps, backend=["wandb"])
++
++    def _append_reward_batch_log(self, batch: DataProto, reward_extra_infos_dict: dict[str, Any]) -> None:
++        rows = self._build_reward_batch_log_rows(batch, reward_extra_infos_dict)
++        if not rows:
++            return
++
++        log_path = self._resolve_reward_batch_log_path()
++        # JSONL keeps writes append-only, so log cost stays proportional to the current batch
++        # instead of growing with the total history size.
++        with open(log_path, "a", encoding="utf-8") as log_file:
++            for row in rows:
++                log_file.write(json.dumps(row, ensure_ascii=False))
++                log_file.write("\n")
++
+     def _maybe_log_val_generations(self, inputs, outputs, scores):
+         """Log a table of validation samples to the configured logger (wandb or swanlab)"""
+ 
+@@ -949,8 +1172,11 @@ class RayPPOTrainer:
+         print(f"Load from checkpoint folder: {global_step_folder}")
+         # set global step
+         self.global_steps = int(global_step_folder.split("global_step_")[-1])
++        self.config.actor_rollout_ref.rollout.multi_turn.swap_action -= (float(self.config.actor_rollout_ref.rollout.multi_turn.swap_action_decay)*self.global_steps*self.config.data.train_batch_size)
++        self.config.actor_rollout_ref.rollout.multi_turn.swap_action = max(0, self.config.actor_rollout_ref.rollout.multi_turn.swap_action)
+ 
+         print(f"Setting global step to {self.global_steps}")
++        print(f"Setting swap_action to probability to {self.config.actor_rollout_ref.rollout.multi_turn.swap_action}")
+         print(f"Resuming from {global_step_folder}")
+ 
+         actor_path = os.path.join(global_step_folder, "actor")
+@@ -1302,6 +1528,11 @@ class RayPPOTrainer:
+                 gen_batch_output = gen_batch.repeat(
+                     repeat_times=self.config.actor_rollout_ref.rollout.n, interleave=True
+                 )
++                current_swap_action = float(self.config.actor_rollout_ref.rollout.multi_turn.swap_action)
++                gen_batch_output.non_tensor_batch["swap_action"] = np.array(
++                    [current_swap_action] * len(gen_batch_output), dtype=object
++                )
++                gen_batch = gen_batch.repeat(repeat_times=self.config.actor_rollout_ref.rollout.n, interleave=True)
+ 
+                 is_last_step = self.global_steps >= self.total_training_steps
+                 with marked_timer("step", timing_raw):
+@@ -1580,12 +1811,19 @@ class RayPPOTrainer:
+                 if isinstance(self.train_dataloader.sampler, AbstractCurriculumSampler):
+                     self.train_dataloader.sampler.update(batch=batch)
+ 
++                self._log_reward_components_to_wandb(logger, reward_extra_infos_dict)
++                self._append_reward_batch_log(batch, reward_extra_infos_dict)
++
+                 # TODO: make a canonical logger that supports various backend
+                 logger.log(data=metrics, step=self.global_steps)
+ 
+                 progress_bar.update(1)
+                 self.global_steps += 1
+ 
++                self.config.actor_rollout_ref.rollout.multi_turn.swap_action -= (float(self.config.actor_rollout_ref.rollout.multi_turn.swap_action_decay)*self.config.data.train_batch_size)
++                self.config.actor_rollout_ref.rollout.multi_turn.swap_action = max(0, self.config.actor_rollout_ref.rollout.multi_turn.swap_action)
++                print(f"Updating swap_action to probability to {self.config.actor_rollout_ref.rollout.multi_turn.swap_action}")
++
+                 if (
+                     hasattr(self.config.actor_rollout_ref.actor, "profiler")
+                     and self.config.actor_rollout_ref.actor.profiler.tool == "torch_memory"

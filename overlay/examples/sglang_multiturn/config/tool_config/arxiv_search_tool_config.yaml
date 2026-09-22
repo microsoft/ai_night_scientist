@@ -1,0 +1,30 @@
+tools:
+  - class_name: verl.tools.arxiv_search_tool.SearchTool
+    config:
+      retrieval_service_url: http://127.0.0.1:8000/retrieve
+      num_workers: 120
+      enable_global_rate_limit: false
+      rate_limit: 120
+      timeout: 30
+      type: native
+    tool_schema:
+      type: function
+      function:
+        name: search
+        description: Searches the web for relevant information based on the given query.
+        parameters:
+          type: object
+          properties:
+            query_list:
+              type: array
+              item:
+                type: string
+              description: A list of fully-formed semantic queries. The tool will return search results for each query.
+            topk:
+              type: integer
+              description: The number of top search results to return for each query. Default is 1.
+            return_scores:
+              type: boolean
+              description: Whether to include relevance scores in the search results. Default is false.
+          required: 
+            - query_list

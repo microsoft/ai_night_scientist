@@ -1,0 +1,43 @@
+diff --git a/verl/workers/rollout/sglang_rollout/async_sglang_server.py b/verl/workers/rollout/sglang_rollout/async_sglang_server.py
+index 964fe97d..b8826086 100644
+--- a/verl/workers/rollout/sglang_rollout/async_sglang_server.py
++++ b/verl/workers/rollout/sglang_rollout/async_sglang_server.py
+@@ -355,6 +355,7 @@ class SGLangHttpServer:
+         )
+         sampling_params["max_new_tokens"] = max_new_tokens
+         return_logprob = sampling_params.pop("logprobs", False)
++        top_logprobs_num = sampling_params.pop("top_logprobs_num", None)
+ 
+         request = {
+             "rid": request_id,
+@@ -365,6 +366,8 @@ class SGLangHttpServer:
+             # TODO: support video input for sglang
+             # video_data=video_data,
+         }
++        if top_logprobs_num is not None:
++            request["top_logprobs_num"] = top_logprobs_num
+ 
+         if self.config.enable_rollout_routing_replay:
+             request.update({"return_routed_experts": True})
+@@ -380,6 +383,7 @@ class SGLangHttpServer:
+         else:
+             token_ids = output["output_ids"]
+             log_probs = None
++        top_logprobs = output.get("meta_info", {}).get("output_top_logprobs", None)
+ 
+         routed_experts = None
+         if self.config.enable_rollout_routing_replay:
+@@ -399,7 +403,12 @@ class SGLangHttpServer:
+                     -1, hf_config.num_hidden_layers, hf_config.num_experts_per_tok
+                 )
+ 
+-        return TokenOutput(token_ids=token_ids, log_probs=log_probs, routed_experts=routed_experts)
++        return TokenOutput(
++            token_ids=token_ids,
++            log_probs=log_probs,
++            top_logprobs=top_logprobs,
++            routed_experts=routed_experts,
++        )
+ 
+     async def start_profile(self, **kwargs):
+         if (

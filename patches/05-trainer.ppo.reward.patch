@@ -1,0 +1,36 @@
+diff --git a/verl/trainer/ppo/reward.py b/verl/trainer/ppo/reward.py
+index f13a3abf..13d26831 100644
+--- a/verl/trainer/ppo/reward.py
++++ b/verl/trainer/ppo/reward.py
+@@ -80,6 +80,12 @@ def get_custom_reward_fn(config: DictConfig) -> Optional[RawRewardFn]:
+     raw_fn = load_extern_object(module_path=module_path, object_name=fn_name)
+ 
+     reward_kwargs = dict(reward_fn_config.get("reward_kwargs", {}))
++
++    multi_turn_cfg = getattr(getattr(getattr(config, "actor_rollout_ref", None), "rollout", None), "multi_turn", None)
++    max_assistant_turns = getattr(multi_turn_cfg, "max_assistant_turns", None)
++    if max_assistant_turns is not None and "max_assistant_turns" not in reward_kwargs:
++        reward_kwargs["max_assistant_turns"] = max_assistant_turns
++
+     if not inspect.iscoroutinefunction(raw_fn):
+         return partial(_call_with_kwargs, raw_fn, reward_kwargs)
+     else:
+@@ -140,12 +146,17 @@ def load_reward_manager(config: DictConfig, tokenizer: Any, **reward_kwargs: Any
+         else:
+             final_compute_score = default_compute_score
+ 
++    # Merge config-provided reward kwargs (from YAML) with call-site kwargs.
++    # Explicit kwargs from caller take precedence.
++    config_reward_kwargs = dict(config.reward.get("reward_kwargs", {}))
++    merged_reward_kwargs = {**config_reward_kwargs, **reward_kwargs}
++
+     # Instantiate and return the reward manager with the specified parameters
+     return reward_manager_cls(
+         config=config,
+         tokenizer=tokenizer,
+         compute_score=final_compute_score,
+-        **reward_kwargs,
++        **merged_reward_kwargs,
+     )
+ 
+ 

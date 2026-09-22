@@ -1,0 +1,11 @@
+diff --git a/verl/workers/rollout/sglang_rollout/sglang_rollout.py b/verl/workers/rollout/sglang_rollout/sglang_rollout.py
+index 3048ab60..af35a3d0 100644
+--- a/verl/workers/rollout/sglang_rollout/sglang_rollout.py
++++ b/verl/workers/rollout/sglang_rollout/sglang_rollout.py
+@@ -217,4 +217,4 @@ class ServerAdapter(BaseRollout):
+             )
+ 
+         if self.device_mesh["infer_tp"].get_local_rank() == 0:
+-            await self._engine.flush_cache()
++            await self._engine.flush_cache()
+\ No newline at end of file

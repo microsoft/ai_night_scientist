@@ -1,0 +1,13 @@
+diff --git a/verl/workers/rollout/replica.py b/verl/workers/rollout/replica.py
+index ed327c25..6e4c5589 100644
+--- a/verl/workers/rollout/replica.py
++++ b/verl/workers/rollout/replica.py
+@@ -41,6 +41,8 @@ class TokenOutput(BaseModel):
+     """response token ids"""
+     log_probs: Optional[list[float]] = None
+     """logprobs of response token ids"""
++    top_logprobs: Optional[Any] = None
++    """top-k logprob candidates per generated token, if backend provides them"""
+     routed_experts: Optional[Any] = None
+     """routed experts of response token ids"""
+     stop_reason: Optional[str] = None

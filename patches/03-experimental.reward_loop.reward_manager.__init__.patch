@@ -1,0 +1,19 @@
+diff --git a/verl/experimental/reward_loop/reward_manager/__init__.py b/verl/experimental/reward_loop/reward_manager/__init__.py
+index 75a440a2..ef5aa35c 100644
+--- a/verl/experimental/reward_loop/reward_manager/__init__.py
++++ b/verl/experimental/reward_loop/reward_manager/__init__.py
+@@ -13,12 +13,14 @@
+ # limitations under the License.
+ 
+ from .registry import get_reward_manager_cls, register  # noqa: I001
++from .creative import CreativeRewardManager
+ from .dapo import DAPORewardManager
+ from .naive import NaiveRewardManager
+ from .limited import RateLimitedRewardManager
+ from .remote import RemoteRewardManager
+ 
+ __all__ = [
++    "CreativeRewardManager",
+     "DAPORewardManager",
+     "NaiveRewardManager",
+     "RateLimitedRewardManager",

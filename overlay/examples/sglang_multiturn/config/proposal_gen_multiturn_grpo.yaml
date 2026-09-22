@@ -1,0 +1,32 @@
+hydra:
+  searchpath:
+    - file://verl/trainer/config
+
+defaults:
+  - ppo_trainer
+  - _self_
+
+data:
+  max_prompt_length: 8192
+  max_response_length: 8192
+  train_batch_size: 8
+  return_raw_chat: True
+  shuffle: False
+
+actor_rollout_ref:
+  hybrid_engine: True
+  rollout:
+    n: 1
+    name: sglang
+    task: proposal_gen
+    agent:
+      default_agent_loop: creative_tool_agent
+    multi_turn:
+      enable: True
+      tool_config_path: "file://examples/sglang_multiturn/config/tool_config/arxiv_search_tool_config.yaml"
+      interaction_config_path: "file://examples/sglang_multiturn/config/interaction_config/proposal_gen_interaction_config.yaml"
+      max_user_turns: 5
+      swap_action: 0.5
+      swap_action_decay: 0.001
+      max_assistant_turns: 5
+      format: qwen
