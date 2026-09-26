@@ -2,8 +2,6 @@
 
 <p align="center"><img src="figures/README_header.png" alt="Reinforcing Agentic Creativity in Scientific Ideation with Night Science"/></p>
 
-[Priyanka Kargupta](https://pkargupta.github.io/), [Silviu Cucerzan](https://scholar.google.com/citations?user=wb2Ll78AAAAJ&hl=en), [Shweti Mahajan](https://www.microsoft.com/en-us/research/people/shmahaj/), [Allen Herring](https://www.linkedin.com/in/allen-herring-9941454), [Jiawei Han](https://hanj.cs.illinois.edu/), [Ryen W. White](http://www.ryenwhite.com/), [Sujay Kumar Jauhar](https://www.microsoft.com/en-us/research/people/sjauhar/)
-
 </div>
 
 # Reinforcing Agentic Creativity in Scientific Ideation with Night Science
@@ -195,7 +193,7 @@ There is no ground-truth proposal: the reward is computed by a judge, not by com
 ## The arXiv Retrieval Service
 
 The `search` action queries a dense arXiv index served by the companion repository,
-[pkargupta/synthetic_proposals](https://github.com/pkargupta/synthetic_proposals). `setup.sh`
+[/synthetic_proposals](https://anonymous.4open.science/status/synthetic_proposals-ECF8). `setup.sh`
 clones it to `companion/` at the pinned commit and installs the verl-side search client, so
 there is nothing extra to wire up.
 
