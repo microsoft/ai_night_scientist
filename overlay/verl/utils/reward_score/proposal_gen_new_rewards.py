@@ -238,22 +238,22 @@ def compute_action_contributions(api_client, problem, action_outputs, final_writ
 
     responses = api_client.call_api_batch(prompts)
 
-    per_action_scores = {idx: {"novelty": 0, "feasibility": 0, "quality": 0} for idx in range(len(action_outputs))}
+    per_action_scores = {idx: {"precedence": 0, "feasibility": 0, "quality": 0} for idx in range(len(action_outputs))}
 
     for idx, resp in enumerate(responses):
         try:
             parsed = json.loads(resp) if not isinstance(resp, dict) else resp
-            novelty_score = int(parsed.get("novelty_score", 1))
+            precedence_score = int(parsed.get("precedence_score", 1))
             feasibility_score = int(parsed.get("feasibility_score", 1))
             quality_score = int(parsed.get("quality_score", 1))
-            novelty_score = max(1, min(5, novelty_score))
+            precedence_score = max(1, min(5, precedence_score))
             feasibility_score = max(1, min(5, feasibility_score))
             quality_score = max(1, min(5, quality_score))
         except Exception:
-            novelty_score = 1
+            precedence_score = 1
             feasibility_score = 1
             quality_score = 1
-        per_action_scores[idx]["novelty"] = novelty_score
+        per_action_scores[idx]["precedence"] = precedence_score
         per_action_scores[idx]["feasibility"] = feasibility_score
         per_action_scores[idx]["quality"] = quality_score
 
@@ -261,12 +261,12 @@ def compute_action_contributions(api_client, problem, action_outputs, final_writ
     contributions = []
     for idx in range(len(action_outputs)):
         raw_scores = [
-            per_action_scores[idx]["novelty"],
+            per_action_scores[idx]["precedence"],
             per_action_scores[idx]["feasibility"],
             per_action_scores[idx]["quality"],
         ]
         contribution_components.append({
-            "novelty": per_action_scores[idx]["novelty"],
+            "precedence": per_action_scores[idx]["precedence"],
             "feasibility": per_action_scores[idx]["feasibility"],
             "quality": per_action_scores[idx]["quality"],
         })

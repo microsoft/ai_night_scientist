@@ -6,9 +6,6 @@
 #   ./launch.sh                   # uses configs/night_science_8b.yaml
 #   ./launch.sh --config-name my_config
 #
-# Single node? Skip Ray entirely and run:
-#   bash examples/sglang_multiturn/day_night/run_qwen2.5-3b_instruct_proposal_gen_multiturn.sh
-#
 set -euo pipefail
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"

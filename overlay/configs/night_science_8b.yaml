@@ -86,7 +86,7 @@ actor_rollout_ref:
       default_agent_loop: creative_tool_agent
 
 trainer:
-  experiment_name: night_science_8b_action_process_outcome_${actor_rollout_ref.rollout.multi_turn.max_user_turns}_swap_${actor_rollout_ref.rollout.multi_turn.swap_action}_${actor_rollout_ref.rollout.multi_turn.swap_action_decay}_batch_size_${data.train_batch_size}
+  experiment_name: night_science_8b_outcome_${actor_rollout_ref.rollout.multi_turn.max_user_turns}_swap_${actor_rollout_ref.rollout.multi_turn.swap_action}_${actor_rollout_ref.rollout.multi_turn.swap_action_decay}_batch_size_${data.train_batch_size}
   val_before_train: False
   n_gpus_per_node: 8
   nnodes: 4
@@ -129,8 +129,5 @@ reward:
 
 custom_reward_function:
   path: verl/utils/reward_score/proposal_gen_new_rewards.py
-  # compute_action_process_outcome_score  full reward (all three axes)
-  # compute_outcome_score                 outcome only
-  # compute_process_score                 process only
-  # compute_process_outcome_score         process + outcome, no action term
-  name: compute_action_process_outcome_score
+  # Swap compute_outcome_score for compute_process_outcome_score to add the process-level reward.
+  name: compute_outcome_score

@@ -25,13 +25,15 @@
 Large language models excel at structured, verifiable tasks, but their low-entropy bias
 produces homogeneous, predictable outputs that limit open-ended scientific ideation. Real
 discovery also needs the loosely structured, serendipitous *night science* that reaches
-beyond the ideas typically considered. **AI Night-Scientist** uses reinforcement learning
-(GRPO) to teach models *when* and *how* to depart from predictable reasoning, modelling
-creativity along three cognitive axes: **action** (what to do next, and how creatively),
-**process** (when to explore versus exploit), and **outcome** (the novelty and usefulness of
-the resulting idea). This distributes ideas up to **42% more evenly** across contribution and
-research-problem types and reaches **68.7% win rates** for originality against reconstructed
-reference proposals. Simply raising the decoding temperature does not reproduce these gains.
+beyond the ideas typically considered. **AI Night-Scientist** fine-tunes Qwen3-8B-Base with
+GRPO so that it can learn *when* and *how* to move beyond predictable reasoning. The agent
+represents creativity along three cognitive axes: **action** (what to do next, and how
+creatively), **process** (when to explore versus exploit), and **outcome** (whether the final
+idea is original, feasible, and relevant). The main model learns these behaviors from an
+outcome-level reward on the completed proposal. Compared with zero-shot Qwen3-8B, Night-8B
+broadens normalized research-paradigm coverage by **27.8%** and contribution-type coverage
+by **14.9%**, while reaching a **56.3% originality win rate** against reconstructed reference
+proposals. Simply raising the decoding temperature does not reproduce these gains.
 
 ![Framework Overview](figures/day_night_framework.png)
 
@@ -86,13 +88,14 @@ Weights & Biases, Hugging Face, Kaggle, and the synthetic-generation settings.
 
 ## The Night Science Loop
 
-Each training example is one **rollout**: select an action, execute it, fold the result into
-the context, repeat until the model chooses `complete` or hits the turn limit. Only then is
-a reward computed, over both the final proposal and the process that produced it.
+Each training example is one **rollout**. The model selects an action, executes it, adds the
+result to its working context, and repeats until it chooses `complete` or reaches the turn
+limit. The main recipe then scores the completed proposal with the outcome-level reward.
 
-The loop lives in `overlay/verl/experimental/agent_loop/creative_tool_agent_loop.py`
-(registered as `creative_tool_agent`); action execution and context bookkeeping live in
-`overlay/verl/interactions/proposal_gen_interaction.py`.
+The agent loop is implemented in
+`overlay/verl/experimental/agent_loop/creative_tool_agent_loop.py` and registered as
+`creative_tool_agent`. `overlay/verl/interactions/proposal_gen_interaction.py` executes
+the selected actions and maintains the proposal context between turns.
 
 ### Action Pool
 
@@ -124,30 +127,32 @@ multi_turn:
 
 ### Reward
 
-The reward implements the three axes directly, hence the entry point's name,
-`compute_action_process_outcome_score`.
+The main Qwen3-8B recipe uses `compute_outcome_score`. It breaks each proposal phase into
+what the phase proposes and how it will be carried out, then evaluates three qualities:
 
-**Outcome.** The final proposal is decomposed into **atomic ideas**, and each idea is scored
-against retrieved related work:
+- **Precedence**: does the core idea move beyond the closest retrieved work?
+- **Feasibility**: is the execution plan credible, specific, and grounded in methodological
+  precedent?
+- **Relevance**: does the idea directly address the original research problem?
 
-- **Novelty**: *what* is being proposed, and is it different from existing work?
-- **Feasibility**: *how* it will be executed; is that reasonable, or does it have precedent?
-- **Relevance**: do the what and the how stay aligned to the original research problem?
+Precedence and relevance are averaged across the proposal's phases. Feasibility uses the
+lowest-scoring execution plan, since one infeasible phase can undermine the whole proposal.
+The three proposal-level scores are normalized to `[-1, 1]` and averaged to produce the
+outcome reward.
 
-**Action** and **process.** Each intermediate action is scored for how much it contributed to
-the final proposal and how much it explored relative to the actions before it, so the model
-learns not just what to produce but when a creative departure was worth taking.
+To include direct feedback on the reasoning trajectory as well, change
+`compute_outcome_score` to `compute_process_outcome_score` in the training config.
 
 | File | Role |
 |---|---|
-| `overlay/verl/utils/reward_score/proposal_gen_new_rewards.py` | The reward itself; `compute_action_process_outcome_score` is the entry point. |
+| `overlay/verl/utils/reward_score/proposal_gen_new_rewards.py` | Outcome and optional process reward computation; `compute_outcome_score` is the default entry point. |
 | `overlay/verl/workers/reward_manager/creative.py` | Registered as `creative`; pulls action histories out of each rollout. |
 | `overlay/verl/workers/reward_manager/creative_api.py` | Batched Azure OpenAI judge client, fanning out across several endpoints. |
 | `overlay/verl/experimental/reward_loop/reward_manager/creative.py` | Adapter for verl's newer async reward loop. |
 
-> The judge is not free. Every rollout issues several GPT-4.1 calls per action plus a batch at
-> the end, and on a real run this dominates cost. Start with a small `train_batch_size` and
-> few turns.
+> The judge is not free. Every completed proposal requires several GPT-4.1 calls, and these
+> calls dominate the cost of a real training run. Start with a small `train_batch_size` while
+> checking that the retrieval and reward services work end to end.
 
 ## Building the Dataset
 
@@ -216,21 +221,14 @@ any service answering `POST /retrieve` with `{"queries": [...], "topk": N}` will
 
 ## Training
 
-**The full recipe** is `configs/night_science_8b.yaml`: GRPO on Qwen3-8B-Base across 4 nodes
-× 8 GPUs, which is what the reported results use. Submit it to Ray:
+The reported 8B setting is fully specified in `configs/night_science_8b.yaml`: end-to-end
+GRPO fine-tuning of Qwen3-8B-Base on 4 nodes × 8 GPUs, with eight sampled trajectories per
+prompt and the outcome-only reward described above. Submit it to Ray:
 
 ```bash
 set -a; . ./.env; set +a
 ./launch.sh                              # or: ./launch.sh --config-name my_config
 ```
-
-**Single node**, smaller model, no Ray:
-
-```bash
-bash examples/sglang_multiturn/day_night/run_qwen2.5-3b_instruct_proposal_gen_multiturn.sh
-```
-
-GRPO on Qwen2.5-3B-Instruct.
 
 The knobs that matter most:
 
@@ -239,7 +237,7 @@ The knobs that matter most:
 | `rollout.agent.default_agent_loop` | Must be `creative_tool_agent`; this is what selects the loop. |
 | `rollout.multi_turn.max_assistant_turns` | Turn budget; `2 * num_actions + 1`. |
 | `rollout.multi_turn.swap_action` / `_decay` | Forced-exploration rate and its decay. |
-| `custom_reward_function.name` | `compute_action_process_outcome_score` for the full reward; `compute_outcome_score` and `compute_process_score` isolate the two halves. |
+| `custom_reward_function.name` | `compute_outcome_score` for the paper's main setting; use `compute_process_outcome_score` to include direct process feedback. |
 
 ## Synthetic Proposal Generation
 

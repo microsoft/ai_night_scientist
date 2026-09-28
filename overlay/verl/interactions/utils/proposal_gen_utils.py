@@ -333,95 +333,75 @@ Please output your proposal outline in the following JSON format:
 
 ################################### REWARD FUNCTION PROMPTS ###################################
 
-relevance_prompt = lambda problem, idea: f"""You are a reviewer for NSF proposals who has been a professor in your field for over 20 years. You are tasked with evaluating the relevance of a proposal to a given problem statement.
+relevance_prompt = lambda problem, idea: f"""You are a reviewer for NSF proposals who has been a professor in your field for over 20 years. Evaluate the relevance of the following idea to the given problem statement: how well it addresses the problem, aligns with its objectives, and fits within the proposed methods.
 
-Problem statement: "{problem}"
+Problem statement:
+{problem}
 
-Given the problem statement, evaluate the following idea proposed by the proposal for its relevance. By relevance, we mean how well the idea addresses the problem statement, aligns with its objectives, and fits within the proposed methods. Consider whether the idea is directly aligned with the problem statement and whether it offers a clear approach to addressing it.
+Idea:
+{idea}
 
-Idea: {idea}
+Score from 1 to 5:
+1 = Not relevant.
+2 = Slightly relevant.
+3 = Moderately relevant.
+4 = Very relevant.
+5 = Highly relevant; directly aligned and comprehensive.
 
-Please provide a score from 1 to 5, where:
-1 = Not relevant at all. The idea does not address the problem statement or is completely off-topic.
-2 = Slightly relevant. The idea has some connection to the problem statement but lacks depth or clarity.
-3 = Moderately relevant. The idea addresses the problem statement but may not fully align with its objectives or methods.
-4 = Very relevant. The idea is closely aligned with the problem statement and provides a clear approach to addressing it.
-5 = Highly relevant. The idea is directly aligned with the problem statement and offers a comprehensive solution.
-
-Provide a brief explanation for your score. Your output should be in the following JSON format:
-{{
-    "score": <integer between 1 and 5>,
-    "explanation": "<brief explanation of the score with specific references to the proposal's objectives, methods, and expected outcomes>"
-}}
-
-Please ensure your response is concise and directly addresses the relevance of the proposal to the problem statement.
-
-Your output JSON:
+Output JSON: {{"score": <int>, "explanation": "<string>"}}
 """
 
-feasibility_prompt = lambda problem, idea, related_paper: f"""You are a reviewer for NSF proposals who has been a professor in your field for over 20 years. Your task is to evaluate the feasibility of a given core idea from a proposal related to a specific problem statement. Each idea should be scored based on its practicality, resources required, and potential challenges. We also provide a related paper to help you assess the feasibility of the idea in the context of existing work.
+feasibility_prompt = lambda problem, idea, related_paper: f"""You are a reviewer for NSF proposals who has been a professor in your field for over 20 years. Evaluate the feasibility of a given core idea from a proposal. A related paper is provided to contextualize the assessment.
 
-Problem statement: "{problem}"
+Problem statement:
+{problem}
 
 Related paper:
 {related_paper}
 
-Given the problem statement, evaluate the following implementation idea for its feasibility. By feasibility, we mean how practical the idea is to implement, considering the resources available, the complexity of the idea, the ethical implications of the idea, and any potential challenges that may arise during implementation. Furthermore, if an idea is too broad or vague, it may be infeasible to implement effectively, so please consider the specificity of the idea as well. Use the related paper to help you assess the feasibility of the idea in the context of existing work.
+Evaluate the following implementation idea for its feasibility: practicality, resources required, complexity, ethical implications, and specificity. A highly feasible proposal includes specific technical details; vague ideas should be penalized.
 
-Note that a feasible idea should not simply mention different techniques or tools without explaining how they will be applied to the specific problem at hand. A highly feasible proposal includes specific technical details wherever applicable.
+Implementation idea:
+{idea}
 
-Implementation Idea: {idea}
+Score from 1 to 5:
+1 = Not feasible.
+2 = Slightly feasible.
+3 = Moderately feasible.
+4 = Very feasible.
+5 = Highly feasible and specific.
 
-Please provide a score from 1 to 5, where:
-1 = Not feasible at all. The idea is impractical, requires resources that are not available, poses significant ethical challenges, or is too vague to implement effectively.
-2 = Slightly feasible. The idea has some practical elements but may require significant resources, faces ethical challenges, or is too broad to implement effectively.
-3 = Moderately feasible. The idea is practical and can be implemented with available resources, but may face some challenges or ethical considerations.
-4 = Very feasible. The idea is practical, requires reasonable resources, and has manageable challenges or ethical considerations.
-5 = Highly feasible. The idea is practical, requires minimal resources, poses no significant ethical challenges, and is specific enough to be implemented effectively.
-
-Provide a brief explanation for your score. Your output should be in the following JSON format:
-{{
-    "score": <integer between 1 and 5>,
-    "explanation": "<brief explanation of the score with specific references to the idea's practicality, resources required, potential challenges, and ethical implications>"
-}}
-
-Please ensure your response is concise and directly addresses the feasibility of the idea.
-
-Your output JSON:
+Output JSON: {{"score": <int>, "explanation": "<string>"}}
 """
 
-novelty_prompt = lambda problem, idea, related_paper: f"""You are a reviewer for NSF proposals who has been a professor in your field for over 20 years. Your task is to evaluate the novelty of a proposal's core idea in relation to a specific problem statement and a related paper. Each idea should be scored based on its originality, contribution to the field, and how it compares to existing work.
+# Kept under its original function name for compatibility with the reward pipeline.
+novelty_prompt = lambda problem, idea, related_paper: f"""You are a reviewer for NSF proposals who has been a professor in your field for over 20 years. Evaluate the precedence of a proposal's core idea relative to the problem statement and a related paper.
 
-Problem statement: "{problem}"
+Problem statement:
+{problem}
 
 Related paper:
 {related_paper}
 
-Given the problem statement and the related paper, evaluate the following core idea for its novelty. Consider how the idea introduces new concepts, methodologies, or perspectives that differentiate it from the related paper OR generally what has already been accomplished within the field. Assess whether the idea challenges existing paradigms or practices and whether it offers a unique contribution to the field.
+Evaluate the following core idea for its precedence. Consider how it introduces new concepts, methodologies, or perspectives that differentiate it from the related paper or existing work in the field.
 
-Idea: {idea}
+Idea:
+{idea}
 
-Please provide a score from 1 to 5, where:
-1 = Not novel at all. The idea is a rehash of existing work, offers no new insights, and does not challenge existing assumptions.
-2 = Slightly novel. The idea has some original elements but is largely derivative and does not significantly advance the field.
-3 = Moderately novel. The idea introduces some new concepts or approaches but may still rely heavily on existing work.
-4 = Very novel. The idea is original, offers new insights, and has the potential to significantly advance the field.
-5 = Highly novel. The idea is groundbreaking, challenges existing paradigms, and offers a unique and valuable contribution to the field.
+Score from 1 to 5:
+1 = Not novel. Rehash of existing work.
+2 = Slightly novel. Largely derivative.
+3 = Moderately novel.
+4 = Very novel. Potential to advance the field.
+5 = Highly novel. Groundbreaking; challenges existing paradigms.
 
-Provide a brief explanation for your score. Your output should be in the following JSON format:
-{{
-    "score": <integer between 1 and 5>,
-    "explanation": "<brief explanation of the score with specific references to the idea's originality, contribution to the field, and comparison to the related paper>"
-}}
-
-Please ensure your response is concise and directly addresses the novelty of the idea.
-
-Your output JSON:
+Output JSON: {{"score": <int>, "explanation": "<string>"}}
 """
 
-action_contribution_prompt = lambda problem, final_proposal, previous_actions, action_type, action_output: f"""You are a reviewer for NSF proposals who has been a professor in your field for over 20 years. Evaluate how much a single intermediate action contributed to the final proposal across three dimensions: novelty, feasibility, and overall quality.
+action_contribution_prompt = lambda problem, final_proposal, previous_actions, action_type, action_output: f"""You are a reviewer for NSF proposals who has been a professor in your field for over 20 years. Evaluate how much a single intermediate action contributed to the final proposal across three dimensions: precedence, feasibility, and overall quality.
 
-Problem statement: "{problem}"
+Problem statement:
+{problem}
 
 Final proposal:
 {final_proposal}
@@ -429,53 +409,37 @@ Final proposal:
 Prior actions before this one (ordered):
 {previous_actions}
 
-Intermediate action type: {action_type}
+Intermediate action type:
+{action_type}
 
 Intermediate action output:
 {action_output}
 
-When scoring, condition on prior actions. If this action mostly repeats prior actions with similar outputs (if prior actions have been taken), assign low contribution scores.
+When scoring, condition on prior actions. If this action mostly repeats prior actions with similar outputs, assign low contribution scores.
 
-Scoring guidance:
-- Novelty contribution:
-    1 = No contribution or harmful to novelty.
-    2 = Slight contribution.
-    3 = Moderate contribution.
-    4 = Strong contribution.
-    5 = Essential contribution to novelty.
-- Feasibility contribution:
-    1 = No contribution or harmful to feasibility.
-    2 = Slight contribution.
-    3 = Moderate contribution.
-    4 = Strong contribution.
-    5 = Essential contribution to feasibility.
-- Overall quality contribution:
-    1 = No contribution or harmful.
-    2 = Slight contribution.
-    3 = Moderate contribution.
-    4 = Strong contribution.
-    5 = Essential contribution.
+Score each dimension from 1 to 5:
+Precedence contribution:
+1 = No contribution or harmful;
+5 = Essential contribution to novelty.
 
-Overall quality includes clarity, coherence, rigor, and alignment with the problem.
+Feasibility contribution:
+1 = No contribution or harmful;
+5 = Essential contribution to feasibility.
 
-Output JSON format:
-{{
-        "novelty_score": <integer between 1 and 5>,
-        "novelty_explanation": "<brief explanation of how this action impacted novelty in the final proposal>",
-        "feasibility_score": <integer between 1 and 5>,
-        "feasibility_explanation": "<brief explanation of how this action impacted feasibility in the final proposal>",
-        "quality_score": <integer between 1 and 5>,
-        "quality_explanation": "<brief explanation of how this action impacted overall quality in the final proposal>"
-}}
+Overall quality contribution:
+1 = No contribution or harmful;
+5 = Essential contribution to clarity, coherence, rigor, and alignment with the problem.
 
-Your output JSON:
+Output JSON: {{"precedence_score": <int>, "precedence_explanation": "<string>", "feasibility_score": <int>, "feasibility_explanation": "<string>", "quality_score": <int>, "quality_explanation": "<string>"}}
 """
 
 process_exploration_prompt = lambda problem, action_type, action_output, previous_actions: f"""You are a reviewer for NSF proposals who has been a professor in your field for over 20 years. Evaluate whether the current action is sufficiently different and novel compared to previous actions in the research process.
 
-Problem statement: "{problem}"
+Problem statement:
+{problem}
 
-Current action type: {action_type}
+Current action type:
+{action_type}
 
 Current action output:
 {action_output}
@@ -483,31 +447,23 @@ Current action output:
 Prior actions taken (ordered):
 {previous_actions}
 
-Your task is to assess how meaningfully different the current action is from the previous actions. Consider:
-- Does the current action explore a new direction or perspective not previously covered?
-- Would the current action provide new information or insights that are substantially different from what prior actions generated?
-- If this is a search action, are the queries fundamentally different from prior search queries or debate topics?
-- If this is a debate action, are the topics/participants substantially different from prior debates?
-- If this is a spark action, does it challenge different assumptions than prior spark actions?
+Assess how meaningfully different the current action is from the previous actions. Consider:
+- Does it explore a new direction or perspective not previously covered?
+- Would it provide substantially different information from prior actions?
+- For search: are the queries fundamentally different from prior queries or debate topics?
+- For debate: are the topics/participants substantially different from prior debates?
+- For spark: does it challenge different assumptions than prior spark actions?
 
-If no prior actions have been taken, consider the current action as highly exploratory by default.
+Assign a low score if this action would likely generate outputs similar to prior actions; assign a high score if it explores genuinely new ground.
 
-Assign a low exploration score if the current action would likely generate outputs similar to or redundant with prior actions. Assign a high exploration score if the current action would explore a genuinely new area or angle.
+Score from 1 to 5:
+1 = Not exploratory; highly redundant with prior actions.
+2 = Slightly exploratory; mostly overlaps with prior actions.
+3 = Moderately exploratory; some new perspectives with limited novelty.
+4 = Very exploratory; covers substantially new ground.
+5 = Highly exploratory; genuinely novel direction with minimal overlap.
 
-Score the action's exploration value from 1 to 5:
-1 = Not exploratory at all. The action would generate outputs highly similar to prior actions; very redundant.
-2 = Slightly exploratory. Minimal new ground covered; mostly overlaps with prior actions.
-3 = Moderately exploratory. Some new perspectives or information, but with limited novelty.
-4 = Very exploratory. Covers substantially new ground; good diversity from prior actions.
-5 = Highly exploratory. Explores a genuinely novel direction with minimal overlap to prior actions.
-
-Output JSON format:
-{{
-    "score": <integer between 1 and 5>,
-    "explanation": "<brief explanation of whether this action provides sufficient exploration value relative to prior actions>"
-}}
-
-Your output JSON:
+Output JSON: {{"score": <int>, "explanation": "<string>"}}
 """
 
 ################################### ACTION DICTIONARY ###################################

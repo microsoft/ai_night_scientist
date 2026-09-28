@@ -175,7 +175,8 @@ Next steps
 
 Then, from that directory:
   python examples/data_preprocess/proposal_gen.py     # build the dataset
-${COMPANION_STEP}  bash examples/sglang_multiturn/day_night/run_qwen2.5-3b_instruct_proposal_gen_multiturn.sh
+${COMPANION_STEP}  set -a; . ./.env; set +a
+  ./launch.sh
 
 See README.md for what lives where.
 EOF
